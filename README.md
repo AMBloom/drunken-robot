@@ -7,8 +7,6 @@
 
 A music-driven side-scroller honoring the style and personality of gypsy folk musician Melinda West. Guide a misanthropic but lovable clockwork robot, recently kicked out of a tavern, on a drunken, stumbling journey home through misty European streets. The soundtrack is composed live, bar by bar, from what is happening on screen.
 
-**Play it:** https://drunkenrobot.whalegames.net
-
 ## 🎮 How to play
 
 - **Balance:** A / D or ← / → counter-steer the robot's sway. The sway is seeded noise, not a rhythm you can memorise, and gusts of wind shove you after a short warning.
@@ -43,7 +41,7 @@ Everything is drawn procedurally in code, no image assets: sketchbook-style robo
 Requires Node.js 22 (see `.nvmrc`) and npm.
 
 ```bash
-git clone https://github.com/SamReeves/drunken-robot.git
+git clone https://github.com/AMBloom/drunken-robot.git
 cd drunken-robot
 npm ci
 npm run dev          # http://localhost:3000
@@ -73,14 +71,13 @@ src/util       seeded RNG
 tests/e2e      playwright smoke tests
 ```
 
-### Deploy
+### Continuous Integration
 
-Every push to `main` is built by GitHub Actions and published to the `deploy` branch, which DigitalOcean App Platform serves as a static site.
-
-This repository is a fork of `AMBloom/drunken-robot` where the current round of improvements is being developed and hosted. The work will be offered back upstream as a pull request once it is complete.
+Every push and pull request is validated by GitHub Actions (`.github/workflows/ci.yml`), running typechecking, linting, unit tests, and Playwright end-to-end tests.
 
 ## 📜 Credits
 
 - **Original design & engineering:** Andrew Bloom (@AMBloom)
 - **Musical inspiration:** Melinda West
+- **Generative music engine & systems overhaul:** Sam Reeves (@SamReeves)
 - Built with **Phaser 4** and **Tone.js**.

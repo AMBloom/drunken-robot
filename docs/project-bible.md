@@ -4,7 +4,7 @@
 **Author:** AMBloom
 **Target Environment:** Any modern browser | Node.js 22+ for development
 **Core Tech Stack:** Vite, Phaser 4, Tone.js, Vanilla TypeScript
-**Repository:** `SamReeves/drunken-robot` (canonical), live at https://drunkenrobot.whalegames.net
+**Repository:** `AMBloom/drunken-robot`
 
 ## 1. Executive Summary & Vision
 
@@ -61,7 +61,7 @@ The robot's journey progresses through five distinct zones, each shifting the vi
 - **Engine / Frontend:** Phaser 4, Tone.js 15, Vite 8, TypeScript.
 - **Quality:** ESLint (type-checked), Prettier, Vitest (theory, composer, economy, spawner, sway, store), Playwright end-to-end.
 - **Art & Audio:** everything is procedural in code; there are no image or sample assets.
-- **Version Control & Deploy:** Git on GitHub; `deploy.yml` builds `main` and publishes to the `deploy` branch, served by DigitalOcean App Platform at https://drunkenrobot.whalegames.net.
+- **Version Control & CI:** Git on GitHub; `ci.yml` runs typechecking, linting, unit tests, and Playwright e2e on pushes and PRs.
 
 ## 8. Where things live
 
