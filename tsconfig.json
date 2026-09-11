@@ -13,8 +13,7 @@
     "paths": {
       "@audio/*": ["src/audio/*"],
       "@game/*": ["src/game/*"],
-      "@state/*": ["src/state/*"],
-      "@ui/*": ["src/ui/*"]
+      "@state/*": ["src/state/*"]
     },
 
     /* Bundler mode */
@@ -40,6 +39,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "vite.config.ts", "eslint.config.js", "playwright.config.ts", "tests"]
 }
-

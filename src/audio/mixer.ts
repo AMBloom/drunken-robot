@@ -8,22 +8,24 @@ export interface ChannelStrip {
   soloNode: Tone.Solo;
   volumeNode: Tone.Volume;
   pannerNode: Tone.Panner;
-  meter: Tone.Meter;
   state: InstrumentChannelState;
 }
 
-const DEFAULT_CHANNEL_CONFIGS: Record<InstrumentId, Omit<InstrumentChannelState, 'recruited' | 'muted' | 'solo' | 'volume' | 'pan'>> = {
+const DEFAULT_CHANNEL_CONFIGS: Record<
+  InstrumentId,
+  Omit<InstrumentChannelState, 'recruited' | 'muted' | 'solo' | 'volume' | 'pan'>
+> = {
   accordion: {
     id: 'accordion',
     name: 'Accordion',
-    displayName: 'Melinda\'s Accordion',
+    displayName: "Melinda's Accordion",
     role: 'Lead Melody & Bellows Swells',
     color: '#f59e0b',
   },
   bass: {
     id: 'bass',
     name: 'Upright Bass',
-    displayName: 'Pavel\'s Double Bass',
+    displayName: "Pavel's Double Bass",
     role: 'Grounding Rhythmic Sub-Pulse',
     color: '#d97706',
   },
@@ -37,21 +39,21 @@ const DEFAULT_CHANNEL_CONFIGS: Record<InstrumentId, Omit<InstrumentChannelState,
   guitar: {
     id: 'guitar',
     name: 'Flamenco Guitar',
-    displayName: 'Mateo\'s Flamenco Guitar',
+    displayName: "Mateo's Flamenco Guitar",
     role: 'Rasgueado Comping & Chords',
     color: '#eab308',
   },
   violin: {
     id: 'violin',
     name: 'Gypsy Violin',
-    displayName: 'Elena\'s Gypsy Violin',
+    displayName: "Elena's Gypsy Violin",
     role: 'Lyrical Lead & Vibrato Flourishes',
     color: '#a855f7',
   },
   clarinet: {
     id: 'clarinet',
     name: 'Klezmer Clarinet',
-    displayName: 'Yitzhak\'s Klezmer Clarinet',
+    displayName: "Yitzhak's Klezmer Clarinet",
     role: 'Woody Counterpoint & Krekhts Glides',
     color: '#06b6d4',
   },
@@ -79,21 +81,14 @@ const DEFAULT_VOLUMES: Record<InstrumentId, number> = {
  * EnsembleMixer - Additive 6-Track Busking Console
  *
  * Coordinates channel strips, companion recruitment, solo/mute busing,
- * dynamic spatial panning, and real-time peak metering.
+ * and dynamic spatial panning.
  */
 export class EnsembleMixer {
   private channels: Map<InstrumentId, ChannelStrip> = new Map();
   private listeners: Set<(channels: InstrumentChannelState[]) => void> = new Set();
 
   constructor() {
-    const instrumentIds: InstrumentId[] = [
-      'accordion',
-      'bass',
-      'percussion',
-      'guitar',
-      'violin',
-      'clarinet',
-    ];
+    const instrumentIds: InstrumentId[] = ['accordion', 'bass', 'percussion', 'guitar', 'violin', 'clarinet'];
 
     instrumentIds.forEach((id) => {
       const isDefaultRecruited = id === 'accordion'; // Accordion unlocked from start
@@ -103,14 +98,12 @@ export class EnsembleMixer {
       const soloNode = new Tone.Solo();
       const volumeNode = new Tone.Volume(DEFAULT_VOLUMES[id]);
       const pannerNode = new Tone.Panner(DEFAULT_PANS[id]);
-      const meter = new Tone.Meter();
 
-      // Routing: Input -> Mute Gate -> Solo Node -> Volume -> Panner -> Meter & Master Bus
+      // Routing: Input -> Mute Gate -> Solo Node -> Volume -> Panner -> Master Bus
       inputGain.connect(muteGain);
       muteGain.connect(soloNode);
       soloNode.connect(volumeNode);
       volumeNode.connect(pannerNode);
-      pannerNode.connect(meter);
       pannerNode.connect(audioEngine.getMasterBus());
 
       const state: InstrumentChannelState = {
@@ -128,7 +121,6 @@ export class EnsembleMixer {
         soloNode,
         volumeNode,
         pannerNode,
-        meter,
         state,
       });
     });
@@ -276,25 +268,26 @@ export class EnsembleMixer {
     this.notifyListeners();
   }
 
-  /**
-   * Reads the real-time RMS/peak level in decibels for a channel meter (-Infinity to 0+ dB).
-   */
-  public getChannelMeterLevel(id: InstrumentId): number {
-    const channel = this.channels.get(id);
-    if (!channel) return -100;
-    const val = channel.meter.getValue();
-    if (typeof val === 'number') {
-      return isFinite(val) ? val : -100;
-    }
-    return -100;
-  }
-
   public subscribe(listener: (channels: InstrumentChannelState[]) => void): () => void {
     this.listeners.add(listener);
     listener(this.getAllChannels());
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  /** Ramps a channel to silence starting at an audio-context time. */
+  public fadeOut(id: InstrumentId, startTime: number, seconds: number): void {
+    const channel = this.channels.get(id);
+    if (!channel) return;
+    channel.muteGain.gain.cancelScheduledValues(startTime);
+    channel.muteGain.gain.setValueAtTime(channel.muteGain.gain.value, startTime);
+    channel.muteGain.gain.linearRampToValueAtTime(0, startTime + seconds);
+  }
+
+  /** Puts a channel back to whatever its recruit/mute state says. */
+  public restoreChannel(id: InstrumentId): void {
+    this.updateChannelGains(id);
   }
 
   private updateChannelGains(id: InstrumentId): void {
@@ -324,7 +317,6 @@ export class EnsembleMixer {
       channel.soloNode.dispose();
       channel.volumeNode.dispose();
       channel.pannerNode.dispose();
-      channel.meter.dispose();
     });
     this.channels.clear();
     this.listeners.clear();

@@ -48,12 +48,7 @@ export class AudioEngine {
     try {
       // Tone.start() unlocks the AudioContext in response to a user interaction
       await Tone.start();
-
-      if (!this.masterLimiter) {
-        // Master bus protection: -1dB ceiling limiter preventing clipping
-        this.masterLimiter = new Tone.Limiter(-1).toDestination();
-        this.masterVolume = new Tone.Volume(0).connect(this.masterLimiter);
-      }
+      this.ensureMasterChain();
 
       // Configure Tone.Transport defaults
       Tone.getTransport().bpm.value = 120;
@@ -69,14 +64,24 @@ export class AudioEngine {
   }
 
   /**
+   * Builds masterVolume -> masterLimiter -> destination on first use. Tone nodes can be
+   * created while the context is still suspended, so this is safe at module load; it
+   * guarantees every synth and channel strip is behind the limiter rather than falling
+   * back to the raw destination when constructed before init().
+   */
+  private ensureMasterChain(): Tone.Volume {
+    if (!this.masterVolume || !this.masterLimiter) {
+      this.masterLimiter = new Tone.Limiter(-1).toDestination();
+      this.masterVolume = new Tone.Volume(0).connect(this.masterLimiter);
+    }
+    return this.masterVolume;
+  }
+
+  /**
    * Returns the master input node where all instrument synths and buses should connect.
    */
   public getMasterBus(): Tone.ToneAudioNode {
-    if (!this.masterVolume) {
-      // Fallback destination if accessed before full initialization
-      return Tone.getDestination();
-    }
-    return this.masterVolume;
+    return this.ensureMasterChain();
   }
 
   /**
@@ -84,7 +89,9 @@ export class AudioEngine {
    */
   public startTransport(): void {
     if (Tone.getContext().state !== 'running') {
-      console.warn('[AudioEngine] Cannot start transport while audio context is suspended. Call init() first.');
+      console.warn(
+        '[AudioEngine] Cannot start transport while audio context is suspended. Call init() first.',
+      );
       return;
     }
     if (Tone.getTransport().state !== 'started') {
@@ -134,12 +141,12 @@ export class AudioEngine {
    * Sets master output volume in decibels (-60 to +6 dB).
    */
   public setMasterVolume(decibels: number, rampTime = 0.05): void {
-    if (!this.masterVolume) return;
+    const master = this.ensureMasterChain();
     const clampedDb = Math.max(-60, Math.min(6, decibels));
     if (rampTime > 0) {
-      this.masterVolume.volume.rampTo(clampedDb, rampTime);
+      master.volume.rampTo(clampedDb, rampTime);
     } else {
-      this.masterVolume.volume.value = clampedDb;
+      master.volume.value = clampedDb;
     }
   }
 

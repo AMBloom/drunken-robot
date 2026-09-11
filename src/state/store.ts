@@ -1,4 +1,12 @@
 import type { InstrumentId, MeterType, ScaleName } from '../audio/types.ts';
+import {
+  ACT_MIN_DISTANCE,
+  BUFFS,
+  MOMENTUM,
+  VICTORY_DISTANCE as BALANCE_VICTORY_DISTANCE,
+  type StumbleCause,
+} from '../game/balance.ts';
+import { computeTier, decayRate, gearValue, isBelowDropLine, stumbleCost } from '../game/systems/economy.ts';
 import { eventBus, type BuffType } from './eventBus.ts';
 
 export interface GameState {
@@ -13,14 +21,16 @@ export interface GameState {
   game_over: boolean;
   victory: boolean;
   isPaused: boolean;
-  activeBuff: BuffType | null;
+  /** Timed buff, if any. The shield is separate so it can stack with one. */
+  activeBuff: Exclude<BuffType, 'shield'> | null;
   buffTimeRemaining: number;
   buffDuration: number;
+  shieldCharges: number;
+  seed: number;
 }
 
 export interface TierDefinition {
   tier: number;
-  minMomentum: number;
   name: string;
   instruments: InstrumentId[];
 }
@@ -45,23 +55,23 @@ export interface ActDefinition {
   };
 }
 
-export const VICTORY_DISTANCE = 108000; // 5 acts * 21600px (180px/s * 120s)
+export const VICTORY_DISTANCE = BALANCE_VICTORY_DISTANCE;
 
 export const ACT_DEFINITIONS: ActDefinition[] = [
   {
     act: 1,
     name: 'The Tavern Exit',
     subtitle: 'Steamy windows & rainy cobblestones',
-    minDistance: 0,
+    minDistance: ACT_MIN_DISTANCE[0],
     visualPalette: {
-      sky: 0xffffff,
-      distant: 0xffffff,
-      midground: 0xffffff,
-      street: 0xffffff,
-      foreground: 0xffffff,
+      sky: 0xd9c4a8, // soot-warmed night
+      distant: 0xc9a26b, // burnt sienna haze
+      midground: 0xf2c98a, // deep amber lamplight
+      street: 0xe8d7c0, // rain-slick cobbles
+      foreground: 0xf5d9a6, // amber mist
     },
     audioConfig: {
-      scale: 'D_PHRYGIAN_DOMINANT',
+      scale: 'D_FREYGISH',
       meter: '4/4',
       bpm: 120,
       description: 'Intimate, raw Czárdás. Rowdy accordion lead, simple kick drum.',
@@ -71,17 +81,17 @@ export const ACT_DEFINITIONS: ActDefinition[] = [
     act: 2,
     name: 'The Crooked Canals',
     subtitle: 'Misty waterways & stone bridges',
-    minDistance: 21600,
+    minDistance: ACT_MIN_DISTANCE[1],
     visualPalette: {
-      sky: 0x1e3a5f, // Indigo blue
-      distant: 0x1b4332, // Moss green shadow
-      midground: 0x2d6a4f, // Moss green
-      street: 0xbbf7d0, // Tarnished brass / stone green tint
-      foreground: 0x52b788, // Emerald mist
+      sky: 0x1e3a5f,
+      distant: 0x1b4332,
+      midground: 0x2d6a4f,
+      street: 0xbbf7d0,
+      foreground: 0x52b788,
     },
     audioConfig: {
       scale: 'D_HARMONIC_MINOR',
-      meter: '7/8_322',
+      meter: '3/4',
       bpm: 115,
       description: 'Melancholic Klezmer Waltzes. Flowing upright bass, searing violin.',
     },
@@ -90,17 +100,17 @@ export const ACT_DEFINITIONS: ActDefinition[] = [
     act: 3,
     name: 'The Marketplace',
     subtitle: 'Shuttered stalls & paper lanterns',
-    minDistance: 43200,
+    minDistance: ACT_MIN_DISTANCE[2],
     visualPalette: {
-      sky: 0x4c0519, // Crimson night
-      distant: 0x881337, // Deep Paprika
-      midground: 0xb91c1c, // Crimson stalls
-      street: 0xfed7aa, // Ochre cobblestones
-      foreground: 0xf97316, // Paprika / lantern warm haze
+      sky: 0x4c0519,
+      distant: 0x881337,
+      midground: 0xb91c1c,
+      street: 0xfed7aa,
+      foreground: 0xf97316,
     },
     audioConfig: {
-      scale: 'D_PHRYGIAN_DOMINANT',
-      meter: '7/8_223',
+      scale: 'D_MISHEBERAKH',
+      meter: '9/8_2223',
       bpm: 138,
       description: 'Polyrhythmic Balkan Chaos. Rapid rasgueado (flamenco guitar), castanets.',
     },
@@ -109,16 +119,16 @@ export const ACT_DEFINITIONS: ActDefinition[] = [
     act: 4,
     name: 'The Industrial Noir',
     subtitle: 'Iron frameworks & electric signs',
-    minDistance: 64800,
+    minDistance: ACT_MIN_DISTANCE[3],
     visualPalette: {
-      sky: 0x09090b, // Charcoal black
-      distant: 0x2e1065, // Deep violet
-      midground: 0x581c87, // Electric violet
-      street: 0x06b6d4, // Neon cyan
-      foreground: 0x22d3ee, // Bright cyan mist
+      sky: 0x09090b,
+      distant: 0x2e1065,
+      midground: 0x581c87,
+      street: 0x06b6d4,
+      foreground: 0x22d3ee,
     },
     audioConfig: {
-      scale: 'D_HARMONIC_MINOR',
+      scale: 'D_HUNGARIAN_MINOR',
       meter: '7/8_322',
       bpm: 126,
       description: 'Suspenseful Noir-Folk. Dissonant chords clashing with folk instruments.',
@@ -128,16 +138,16 @@ export const ACT_DEFINITIONS: ActDefinition[] = [
     act: 5,
     name: 'The Sunrise Overlook',
     subtitle: 'Chimney smoke & waking songbirds',
-    minDistance: 86400,
+    minDistance: ACT_MIN_DISTANCE[4],
     visualPalette: {
-      sky: 0x701a75, // Lavender mist dawn
-      distant: 0xc084fc, // Soft lavender
-      midground: 0xfb7185, // Rose gold
-      street: 0xfed7aa, // Peach sunrise cobblestone
-      foreground: 0xfef08a, // Golden morning light
+      sky: 0x701a75,
+      distant: 0xc084fc,
+      midground: 0xfb7185,
+      street: 0xfed7aa,
+      foreground: 0xfef08a,
     },
     audioConfig: {
-      scale: 'D_PHRYGIAN_DOMINANT',
+      scale: 'D_FREYGISH',
       meter: '4/4',
       bpm: 180,
       description: 'Triumphant Full Ensemble. Major key modulation, 180 BPM czárdás finale.',
@@ -145,47 +155,26 @@ export const ACT_DEFINITIONS: ActDefinition[] = [
   },
 ];
 
+/** Who is playing at each tier. Requirements live in balance.ts (TIER). */
 export const TIERS: TierDefinition[] = [
-  {
-    tier: 0,
-    minMomentum: 0,
-    name: 'Solo Accordion',
-    instruments: ['accordion'],
-  },
-  {
-    tier: 1,
-    minMomentum: 25,
-    name: 'Rhythm Duo',
-    instruments: ['accordion', 'bass'],
-  },
-  {
-    tier: 2,
-    minMomentum: 50,
-    name: 'Tavern Trio',
-    instruments: ['accordion', 'bass', 'percussion'],
-  },
-  {
-    tier: 3,
-    minMomentum: 75,
-    name: 'Quartet',
-    instruments: ['accordion', 'bass', 'percussion', 'guitar'],
-  },
+  { tier: 0, name: 'Solo Accordion', instruments: ['accordion'] },
+  { tier: 1, name: 'Rhythm Duo', instruments: ['accordion', 'bass'] },
+  { tier: 2, name: 'Tavern Trio', instruments: ['accordion', 'bass', 'percussion'] },
+  { tier: 3, name: 'Quartet', instruments: ['accordion', 'bass', 'percussion', 'guitar'] },
   {
     tier: 4,
-    minMomentum: 95,
     name: 'Full Balkan Band',
     instruments: ['accordion', 'bass', 'percussion', 'guitar', 'violin', 'clarinet'],
   },
 ];
 
-export class GameStore {
-  private elapsedTime = 0;
-  private state: GameState = {
+function freshState(seed: number): GameState {
+  return {
     tips: 0,
-    momentum: 35,
-    momentumTier: 1,
-    tierName: TIERS[1].name,
-    activeInstruments: [...TIERS[1].instruments],
+    momentum: MOMENTUM.start,
+    momentumTier: 0,
+    tierName: TIERS[0].name,
+    activeInstruments: [...TIERS[0].instruments],
     distanceTraveled: 0,
     activeAct: 1,
     actName: ACT_DEFINITIONS[0].name,
@@ -195,12 +184,25 @@ export class GameStore {
     activeBuff: null,
     buffTimeRemaining: 0,
     buffDuration: 0,
+    shieldCharges: 0,
+    seed,
   };
+}
 
-  private listeners: Set<(state: GameState) => void> = new Set();
+export class GameStore {
+  private elapsedTime = 0;
+  /** Seconds momentum has spent under the current tier's drop line. */
+  private dropDwellSec = 0;
+  private state: GameState = freshState(0);
+  private listeners: Set<(state: Readonly<GameState>) => void> = new Set();
+  private dirty = false;
 
+  /**
+   * Returns the live state object. Callers must treat it as read-only;
+   * it is replaced wholesale on reset(), so do not cache it across runs.
+   */
   public getState(): Readonly<GameState> {
-    return { ...this.state, activeInstruments: [...this.state.activeInstruments] };
+    return this.state;
   }
 
   public getElapsedTime(): number {
@@ -214,7 +216,6 @@ export class GameStore {
   public setPaused(isPaused: boolean): void {
     if (this.state.game_over || this.state.victory) return;
     if (this.state.isPaused === isPaused) return;
-
     this.state.isPaused = isPaused;
     eventBus.emit('GAME_PAUSE', { isPaused });
     this.notify();
@@ -226,135 +227,149 @@ export class GameStore {
     return this.state.isPaused;
   }
 
-  public activateBuff(type: BuffType, duration = 12): void {
+  // -------------------------------------------------------------
+  // Buffs
+  // -------------------------------------------------------------
+
+  /** Applies a collected power-up. Shields stack as charges; timed buffs replace each other. */
+  public activateBuff(type: BuffType): void {
     if (this.state.game_over || this.state.victory) return;
+
+    if (type === 'shield') {
+      this.state.shieldCharges += BUFFS.shield.charges;
+      eventBus.emit('BUFF_ACTIVATED', { buff: 'shield', duration: 0 });
+      this.notify();
+      return;
+    }
 
     if (this.state.activeBuff && this.state.activeBuff !== type) {
       eventBus.emit('BUFF_DEACTIVATED', { buff: this.state.activeBuff });
     }
-
+    const duration = BUFFS[type].duration;
     this.state.activeBuff = type;
     this.state.buffTimeRemaining = duration;
     this.state.buffDuration = duration;
-
-    eventBus.emit('BUFF_ACTIVATED', {
-      buff: type,
-      duration,
-    });
+    eventBus.emit('BUFF_ACTIVATED', { buff: type, duration });
     this.notify();
   }
 
   public deactivateBuff(): void {
     if (!this.state.activeBuff) return;
-
-    const prevBuff = this.state.activeBuff;
+    const prev = this.state.activeBuff;
     this.state.activeBuff = null;
     this.state.buffTimeRemaining = 0;
     this.state.buffDuration = 0;
-
-    eventBus.emit('BUFF_DEACTIVATED', { buff: prevBuff });
+    eventBus.emit('BUFF_DEACTIVATED', { buff: prev });
     this.notify();
+  }
+
+  /** Spends one shield charge if there is one. Returns whether a hazard was absorbed. */
+  public consumeShield(): boolean {
+    if (this.state.shieldCharges <= 0) return false;
+    this.state.shieldCharges -= 1;
+    if (this.state.shieldCharges === 0) {
+      eventBus.emit('BUFF_DEACTIVATED', { buff: 'shield' });
+    }
+    this.notify();
+    return true;
   }
 
   public updateBuffTimer(dt: number): void {
     if (this.state.isPaused || this.state.game_over || this.state.victory) return;
     if (!this.state.activeBuff) return;
-
     this.state.buffTimeRemaining -= dt;
     if (this.state.buffTimeRemaining <= 0) {
       this.deactivateBuff();
     } else {
-      this.notify();
+      this.markDirty();
     }
   }
 
+  // -------------------------------------------------------------
+  // Momentum and tiers
+  // -------------------------------------------------------------
+
   public addTips(count = 1): void {
     if (this.state.isPaused || this.state.game_over || this.state.victory) return;
-    const multiplier = this.state.activeBuff === 'tips' ? 2 : 1;
-    const earnedTips = count * multiplier;
-    this.state.tips += earnedTips;
-    // Each tip collected grants a momentum surge (+8% base, 2x with tips buff)
-    this.adjustMomentum(8 * earnedTips);
-
-    eventBus.emit('TIP_COLLECTED', {
-      x: 0,
-      y: 0,
-      totalTips: this.state.tips,
-      momentum: this.state.momentum,
-    });
+    this.state.tips += count;
+    this.adjustMomentum(gearValue(this.state.activeBuff) * count);
+    eventBus.emit('TIP_COLLECTED', { totalTips: this.state.tips, momentum: this.state.momentum });
   }
 
   public adjustMomentum(delta: number): void {
     if (this.state.isPaused || this.state.game_over || this.state.victory) return;
 
     const prevMomentum = this.state.momentum;
-    const prevTier = this.state.momentumTier;
-    const newMomentum = Math.max(0, Math.min(100, prevMomentum + delta));
-
-    if (newMomentum === prevMomentum && delta !== 0) {
-      if (this.elapsedTime >= 10 && newMomentum <= 0) {
-        this.triggerGameOver();
-      }
-      return;
-    }
-
+    const newMomentum = Math.max(0, Math.min(MOMENTUM.max, prevMomentum + delta));
     this.state.momentum = newMomentum;
-    this.updateTier();
+    this.resolveTier();
 
-    eventBus.emit('MOMENTUM_CHANGE', {
-      momentum: this.state.momentum,
-      previousMomentum: prevMomentum,
-      tier: this.state.momentumTier,
-    });
-
-    if (this.state.momentumTier !== prevTier) {
-      eventBus.emit('TIER_CHANGE', {
+    if (newMomentum !== prevMomentum) {
+      eventBus.emit('MOMENTUM_CHANGE', {
+        momentum: newMomentum,
+        previousMomentum: prevMomentum,
         tier: this.state.momentumTier,
-        tierName: this.state.tierName,
-        activeInstruments: [...this.state.activeInstruments],
       });
     }
 
-    if (this.elapsedTime >= 10 && this.state.momentum <= 0) {
+    if (this.elapsedTime >= MOMENTUM.deathGraceSec && newMomentum <= 0) {
       this.triggerGameOver();
     }
-
-    this.notify();
   }
 
-  public setMomentum(value: number): void {
-    const delta = value - this.state.momentum;
-    this.adjustMomentum(delta);
+  public applyStumblePenalty(cause: StumbleCause): void {
+    this.adjustMomentum(-stumbleCost(cause));
   }
 
-  public applyStumblePenalty(): void {
-    this.adjustMomentum(-25);
-  }
-
+  /** Per-frame tick: clock, buff timers, and momentum decay. */
   public decayMomentum(dt: number): void {
     if (this.state.isPaused || this.state.game_over || this.state.victory) return;
     this.elapsedTime += dt;
     this.updateBuffTimer(dt);
+    this.dropDwellSec = isBelowDropLine(this.state.momentum, this.state.momentumTier)
+      ? this.dropDwellSec + dt
+      : 0;
 
     if (this.state.momentum > 0) {
-      // Gentle continuous decay (-1.5% / sec)
-      this.adjustMomentum(-1.5 * dt);
-    } else if (this.elapsedTime >= 10) {
-      this.triggerGameOver();
+      this.adjustMomentum(-decayRate(this.state.momentum, this.state.activeAct) * dt);
+    } else {
+      this.resolveTier();
+      if (this.elapsedTime >= MOMENTUM.deathGraceSec) this.triggerGameOver();
     }
+    this.markDirty();
   }
+
+  private resolveTier(): void {
+    const prevTier = this.state.momentumTier;
+    const tier = computeTier(this.state.tips, this.state.momentum, prevTier, this.dropDwellSec);
+    if (tier === prevTier) return;
+
+    const def = TIERS[tier];
+    this.state.momentumTier = tier;
+    this.state.tierName = def.name;
+    this.state.activeInstruments = [...def.instruments];
+    this.dropDwellSec = 0;
+
+    eventBus.emit('TIER_CHANGE', {
+      tier,
+      tierName: def.name,
+      activeInstruments: [...def.instruments],
+    });
+    this.notify();
+  }
+
+  // -------------------------------------------------------------
+  // Progress
+  // -------------------------------------------------------------
 
   public updateDistance(scrollX: number): void {
     if (this.state.isPaused || this.state.game_over || this.state.victory) return;
     const distance = Math.max(0, Math.floor(scrollX));
     if (distance === this.state.distanceTraveled) return;
-
     this.state.distanceTraveled = distance;
+    this.markDirty();
     this.checkActProgression();
-
-    if (this.state.distanceTraveled >= VICTORY_DISTANCE) {
-      this.triggerVictory();
-    }
+    if (this.state.distanceTraveled >= VICTORY_DISTANCE) this.triggerVictory();
   }
 
   public getActDefinition(act: number): ActDefinition {
@@ -368,93 +383,77 @@ export class GameStore {
   private triggerGameOver(): void {
     if (this.state.game_over || this.state.victory) return;
     this.state.game_over = true;
-    eventBus.emit('GAME_OVER', {
-      distanceTraveled: this.state.distanceTraveled,
-      tips: this.state.tips,
-    });
+    eventBus.emit('GAME_OVER', { distanceTraveled: this.state.distanceTraveled, tips: this.state.tips });
     this.notify();
   }
 
   private triggerVictory(): void {
     if (this.state.victory || this.state.game_over) return;
     this.state.victory = true;
-    eventBus.emit('VICTORY', {
-      distanceTraveled: this.state.distanceTraveled,
-      tips: this.state.tips,
-    });
+    eventBus.emit('VICTORY', { distanceTraveled: this.state.distanceTraveled, tips: this.state.tips });
     this.notify();
   }
 
   private checkActProgression(): void {
     const prevAct = this.state.activeAct;
-    let matchedAct = ACT_DEFINITIONS[0];
-
-    for (const actDef of ACT_DEFINITIONS) {
-      if (this.state.distanceTraveled >= actDef.minDistance) {
-        matchedAct = actDef;
-      }
+    let matched = ACT_DEFINITIONS[0];
+    for (const def of ACT_DEFINITIONS) {
+      if (this.state.distanceTraveled >= def.minDistance) matched = def;
     }
-
-    if (matchedAct.act !== prevAct) {
-      this.state.activeAct = matchedAct.act;
-      this.state.actName = matchedAct.name;
-
-      eventBus.emit('ACT_CHANGE', {
-        act: matchedAct.act,
-        name: matchedAct.name,
-      });
-
-      this.notify();
-    }
-  }
-
-  public reset(): void {
-    this.elapsedTime = 0;
-    this.state = {
-      tips: 0,
-      momentum: 35,
-      momentumTier: 1,
-      tierName: TIERS[1].name,
-      activeInstruments: [...TIERS[1].instruments],
-      distanceTraveled: 0,
-      activeAct: 1,
-      actName: ACT_DEFINITIONS[0].name,
-      game_over: false,
-      victory: false,
-      isPaused: false,
-      activeBuff: null,
-      buffTimeRemaining: 0,
-      buffDuration: 0,
-    };
+    if (matched.act === prevAct) return;
+    this.state.activeAct = matched.act;
+    this.state.actName = matched.name;
+    eventBus.emit('ACT_CHANGE', { act: matched.act, name: matched.name });
     this.notify();
   }
 
-  public subscribe(listener: (state: GameState) => void): () => void {
+  // -------------------------------------------------------------
+  // Lifecycle
+  // -------------------------------------------------------------
+
+  /** Begins a run with the given seed. Announces Act 1 so audio and visuals apply its config. */
+  public startRun(seed: number): void {
+    this.elapsedTime = 0;
+    this.dropDwellSec = 0;
+    this.state = freshState(seed);
+    eventBus.emit('ACT_CHANGE', { act: ACT_DEFINITIONS[0].act, name: ACT_DEFINITIONS[0].name });
+    this.notify();
+  }
+
+  /** Restarts with the same seed, so "try again" replays the same street. */
+  public reset(): void {
+    this.startRun(this.state.seed);
+  }
+
+  public subscribe(listener: (state: Readonly<GameState>) => void): () => void {
     this.listeners.add(listener);
-    listener(this.getState());
+    listener(this.state);
     return () => {
       this.listeners.delete(listener);
     };
   }
 
-  private updateTier(): void {
-    let matchedTier = TIERS[0];
-    for (const t of TIERS) {
-      if (this.state.momentum >= t.minMomentum) {
-        matchedTier = t;
-      }
-    }
-
-    this.state.momentumTier = matchedTier.tier;
-    this.state.tierName = matchedTier.name;
-    this.state.activeInstruments = [...matchedTier.instruments];
+  /**
+   * Marks the state as changed without notifying. High-frequency mutations
+   * (decay, buff timers, distance) use this; the scene calls flush() once per
+   * frame so subscribers see at most one update per frame.
+   */
+  private markDirty(): void {
+    this.dirty = true;
   }
 
+  /** Delivers a pending coalesced update, if any. Call once per frame. */
+  public flush(): void {
+    if (!this.dirty) return;
+    this.notify();
+  }
+
+  /** Immediate notification for discrete transitions (tier, act, pause, buffs, game over). */
   private notify(): void {
-    const current = this.getState();
+    this.dirty = false;
     for (const listener of this.listeners) {
       try {
-        listener(current);
+        listener(this.state);
       } catch (err) {
         console.error('[GameStore] Error in subscriber callback:', err);
       }

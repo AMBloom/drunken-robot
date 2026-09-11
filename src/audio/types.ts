@@ -3,11 +3,16 @@
  * The Drunken Robot's Journey Home
  */
 
+import type { MeterName } from './theory/meter.ts';
+import type { ModeName } from './theory/modes.ts';
+
 export type AudioEngineState = 'uninitialized' | 'suspended' | 'running' | 'closed';
 
-export type ScaleName = 'D_PHRYGIAN_DOMINANT' | 'D_HARMONIC_MINOR';
+/** Scales are modes from the theory layer. */
+export type ScaleName = ModeName;
 
-export type MeterType = '4/4' | '7/8_322' | '7/8_223' | 'ALTERNATING';
+/** Meters come from the theory layer. */
+export type MeterType = MeterName;
 
 export type InstrumentId = 'accordion' | 'bass' | 'percussion' | 'guitar' | 'violin' | 'clarinet';
 
@@ -17,8 +22,7 @@ export interface ScaleDefinition {
   name: ScaleName;
   displayName: string;
   root: string;
-  intervals: number[]; // semitone intervals from root
-  octaves: Record<number, string[]>;
+  intervals: readonly number[]; // semitone intervals from root
   characteristicMood: string;
 }
 
@@ -27,10 +31,6 @@ export interface AccordionParams {
   bellowsPressure: number;
   /** Musette beating detune in cents (0 - 25) */
   musetteDetune: number;
-  /** Attack time in seconds */
-  attack: number;
-  /** Release time in seconds */
-  release: number;
   /** Output volume in decibels */
   volume: number;
 }
@@ -53,25 +53,24 @@ export interface ConductorStepEvent {
   stepIndex: number;
   /** Total eighth-note steps in the current bar (e.g. 8 for 4/4, 7 for 7/8) */
   totalSteps: number;
-  /** Current measure count */
+  /** Absolute bar index */
   measureCount: number;
-  /** Whether this step is an accented downbeat or subdivision pulse */
+  /** Whether this step is an accented group start */
   isAccent: boolean;
-  /** Sub-beat group index within the asymmetrical bar */
+  /** Sub-beat group index within the additive bar */
   groupIndex: number;
   /** Sub-beat group length (e.g. 3, 2, or 2 in 3+2+2) */
   groupLength: number;
-  /** Active meter representation string */
+  /** Active meter */
   meter: MeterType;
-  /** Active scale name */
+  /** Active mode */
   scale: ScaleName;
-  /** Note triggered on main accordion if any */
+  /** Note triggered on the accordion, if any */
   note?: string;
-  /** Per-instrument triggered notes or description */
+  /** Per-instrument triggered notes or descriptions */
   triggers?: Partial<Record<InstrumentId, string>>;
 }
 
 export interface ConductorListener {
   (event: ConductorStepEvent): void;
 }
-

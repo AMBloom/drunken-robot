@@ -37,3 +37,11 @@ walkthrough*.md
 implementation_plan.md
 implementation_plan*.md
 *implementation_plan*
+
+# Tooling
+.env*
+*.tsbuildinfo
+coverage
+.vite
+playwright-report
+test-results

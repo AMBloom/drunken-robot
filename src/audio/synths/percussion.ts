@@ -1,104 +1,86 @@
 import * as Tone from 'tone';
-import { audioEngine } from '../engine.ts';
+import { BaseInstrument } from './BaseInstrument.ts';
 
-export type PercussionSoundType = 'castanet' | 'stomp' | 'shaker' | 'metal';
+export type PercussionSoundType = 'castanet' | 'stomp' | 'shaker' | 'metal' | 'jingle' | 'rim';
 
 export interface PercussionSynthParams {
   volume?: number;
 }
 
 /**
- * PercussionSynth - Procedural Balkan Street Percussion & Castanets Engine
+ * PercussionSynth - street percussion kit.
  *
- * Implements 4 distinct organic street percussion voices:
- * 1. Castanets: Sharp resonant wooden clack with highpass noise transient.
- * 2. Tavern Stomp: Deep acoustic kick / boot stomping on tavern wood planks.
- * 3. Shaker / Tambourine: Polyrhythmic highpass noise envelope.
- * 4. Metal Clicks: High metallic ring simulating tambourine jingles or triangle.
+ * Castanets (filtered pink noise click), boot stomp (membrane kick), shaker
+ * (white noise brush), and a metal jingle for tambourine-style accents.
  */
-export class PercussionSynth {
-  private castanetNoise: Tone.NoiseSynth;
-  private castanetFilter: Tone.Filter;
-  private stompMembrane: Tone.MembraneSynth;
-  private shakerNoise: Tone.NoiseSynth;
-  private metalSynth: Tone.MetalSynth;
-  private outputVolume: Tone.Volume;
+export class PercussionSynth extends BaseInstrument {
+  private readonly castanetNoise: Tone.NoiseSynth;
+  private readonly castanetFilter: Tone.Filter;
+  private readonly stompMembrane: Tone.MembraneSynth;
+  private readonly shakerNoise: Tone.NoiseSynth;
+  private readonly metalSynth: Tone.MetalSynth;
+  private readonly rimNoise: Tone.NoiseSynth;
+  private readonly rimFilter: Tone.Filter;
 
   constructor(params?: PercussionSynthParams) {
-    // 1. Castanets (High-frequency bandpass wood clack)
-    this.castanetFilter = new Tone.Filter({
-      frequency: 2800,
-      type: 'bandpass',
-      Q: 4.0,
-    });
+    super(params?.volume ?? 0);
 
-    this.castanetNoise = new Tone.NoiseSynth({
-      noise: {
-        type: 'pink',
-      },
-      envelope: {
-        attack: 0.001,
-        decay: 0.04,
-        sustain: 0,
-      },
-      volume: 3,
-    });
+    this.castanetFilter = this.track(new Tone.Filter({ frequency: 2800, type: 'bandpass', Q: 4.0 }));
+    this.castanetNoise = this.track(
+      new Tone.NoiseSynth({
+        noise: { type: 'pink' },
+        envelope: { attack: 0.001, decay: 0.04, sustain: 0 },
+        volume: 3,
+      }),
+    );
     this.castanetNoise.connect(this.castanetFilter);
 
-    // 2. Tavern Boot Stomp (Deep wooden acoustic kick)
-    this.stompMembrane = new Tone.MembraneSynth({
-      pitchDecay: 0.04,
-      octaves: 3.5,
-      oscillator: {
-        type: 'sine',
-      },
-      envelope: {
-        attack: 0.002,
-        decay: 0.22,
-        sustain: 0.01,
-        release: 0.2,
-      },
-      volume: -2,
-    });
+    this.stompMembrane = this.track(
+      new Tone.MembraneSynth({
+        pitchDecay: 0.04,
+        octaves: 3.5,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.002, decay: 0.22, sustain: 0.01, release: 0.2 },
+        volume: -2,
+      }),
+    );
 
-    // 3. Shaker / Tambourine (Crisp highpass brush)
-    this.shakerNoise = new Tone.NoiseSynth({
-      noise: {
-        type: 'white',
-      },
-      envelope: {
-        attack: 0.005,
-        decay: 0.065,
-        sustain: 0,
-      },
-      volume: -6,
-    });
+    this.shakerNoise = this.track(
+      new Tone.NoiseSynth({
+        noise: { type: 'white' },
+        envelope: { attack: 0.005, decay: 0.065, sustain: 0 },
+        volume: -6,
+      }),
+    );
 
-    // 4. Metal Jingle / Click (Tambourine jingles)
-    this.metalSynth = new Tone.MetalSynth({
-      envelope: {
-        attack: 0.001,
-        decay: 0.08,
-        release: 0.05,
-      },
-      harmonicity: 4.8,
-      modulationIndex: 28,
-      resonance: 4000,
-      octaves: 1.2,
-      volume: -14,
-    });
+    this.metalSynth = this.track(
+      new Tone.MetalSynth({
+        envelope: { attack: 0.001, decay: 0.08, release: 0.05 },
+        harmonicity: 4.8,
+        modulationIndex: 28,
+        resonance: 4000,
+        octaves: 1.2,
+        volume: -14,
+      }),
+    );
     this.metalSynth.frequency.value = 380;
 
-    // 5. Output Stage
-    this.outputVolume = new Tone.Volume(params?.volume ?? 0);
+    // Rim / knock: a short bright click for footsteps
+    this.rimFilter = this.track(new Tone.Filter({ frequency: 1800, type: 'bandpass', Q: 3 }));
+    this.rimNoise = this.track(
+      new Tone.NoiseSynth({
+        noise: { type: 'white' },
+        envelope: { attack: 0.001, decay: 0.03, sustain: 0 },
+        volume: -4,
+      }),
+    );
+    this.rimNoise.connect(this.rimFilter);
+    this.rimFilter.connect(this.output);
 
-    // Routing all percussive voices to the unified channel output volume
-    this.castanetFilter.connect(this.outputVolume);
-    this.stompMembrane.connect(this.outputVolume);
-    this.shakerNoise.connect(this.outputVolume);
-    this.metalSynth.connect(this.outputVolume);
-
-    this.outputVolume.connect(audioEngine.getMasterBus());
+    this.castanetFilter.connect(this.output);
+    this.stompMembrane.connect(this.output);
+    this.shakerNoise.connect(this.output);
+    this.metalSynth.connect(this.output);
   }
 
   public triggerCastanet(time?: Tone.Unit.Time, velocity = 0.85): void {
@@ -117,11 +99,11 @@ export class PercussionSynth {
     this.metalSynth.triggerAttackRelease(380, '32n', time, velocity);
   }
 
-  public trigger(
-    type: PercussionSoundType,
-    time?: Tone.Unit.Time,
-    velocity?: number
-  ): void {
+  public triggerRim(time?: Tone.Unit.Time, velocity = 0.3): void {
+    this.rimNoise.triggerAttackRelease('64n', time, velocity);
+  }
+
+  public trigger(type: PercussionSoundType, time?: Tone.Unit.Time, velocity?: number): void {
     switch (type) {
       case 'castanet':
         this.triggerCastanet(time, velocity);
@@ -133,31 +115,12 @@ export class PercussionSynth {
         this.triggerShaker(time, velocity);
         break;
       case 'metal':
+      case 'jingle':
         this.triggerMetal(time, velocity);
         break;
+      case 'rim':
+        this.triggerRim(time, velocity);
+        break;
     }
-  }
-
-  public setVolume(decibels: number, rampTime = 0.05): void {
-    if (rampTime > 0) {
-      this.outputVolume.volume.rampTo(decibels, rampTime);
-    } else {
-      this.outputVolume.volume.value = decibels;
-    }
-  }
-
-  public connect(destination: Tone.ToneAudioNode): this {
-    this.outputVolume.disconnect();
-    this.outputVolume.connect(destination);
-    return this;
-  }
-
-  public dispose(): void {
-    this.castanetNoise.dispose();
-    this.castanetFilter.dispose();
-    this.stompMembrane.dispose();
-    this.shakerNoise.dispose();
-    this.metalSynth.dispose();
-    this.outputVolume.dispose();
   }
 }
